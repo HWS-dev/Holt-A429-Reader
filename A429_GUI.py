@@ -11,11 +11,13 @@ from PyQt6.QtCore import QTimer, Qt
 class ARINC429GUI(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("AeroVolt ARINC 429 Analyzer")
+        self.setWindowTitle("Holt ARINC 429 Analyzer")
         self.resize(800, 600)
 
         self.init_ui()
         self.setup_mock_data_feed()
+        self.labCount = 1
+
 
     def init_ui(self):
         main_widget = QWidget()
@@ -72,6 +74,7 @@ class ARINC429GUI(QMainWindow):
 
     #temperary method to simluate A429 data. 
     def add_mock_data(self):
+
         # Simulate an ARINC word
         label = random.randint(0, 255)
         data = random.randint(0, 0xFFFFF)
@@ -91,12 +94,21 @@ class ARINC429GUI(QMainWindow):
         else:
             data_str = str(data)
 
-        row = self.table.rowCount()
-        self.table.insertRow(row)
-        self.table.setItem(row, 0, QTableWidgetItem(time_str))
-        self.table.setItem(row, 1, QTableWidgetItem(f"{label:02X}"))
-        self.table.setItem(row, 2, QTableWidgetItem(data_str))
-        self.table.setItem(row, 3, QTableWidgetItem(str(ssm)))
+        # row = self.table.rowCount()
+        # self.table.insertRow(row)
+        # self.table.setItem(row, 0, QTableWidgetItem(time_str))
+        # self.table.setItem(row, 1, QTableWidgetItem(f"{label:02X}"))
+        # self.table.setItem(row, 2, QTableWidgetItem(data_str))
+        # self.table.setItem(row, 3, QTableWidgetItem(str(ssm)))
+        
+        
+        self.table.insertRow(0)
+        self.table.setItem(0, 0, QTableWidgetItem(time_str))
+        self.table.setItem(0, 1, QTableWidgetItem(f"{label:02X}"))
+        self.table.setItem(0, 2, QTableWidgetItem(data_str))
+        self.table.setItem(0, 3, QTableWidgetItem(str(ssm)))
+        self.table.setVerticalHeaderItem(0, QTableWidgetItem(str(self.labCount)))
+        self.labCount += 1
 
         self.details_box.setPlainText(
             f"Label: {label:02X}\nData: {data_str}\nSSM: {ssm}\nTimestamp: {time_str}"

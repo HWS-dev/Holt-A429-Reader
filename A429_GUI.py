@@ -78,13 +78,13 @@ class MainMenuWindow(QMainWindow):
         channel = self.channel_combo.currentText()
         format_type = self.format_combo.currentText()
         speed = self.speed_combo.currentText()
-        self.data_window = ARINC429GUI(channel=channel,format_type=format_type, speed=speed)
+        self.data_window = LabelMenu(channel=channel,format_type=format_type, speed=speed)
         self.data_window.show()
         self.close()
       
 
 
-class ARINC429GUI(QMainWindow):
+class LabelMenu(QMainWindow):
     def __init__(self, channel="Channel 1", format_type="Hex", speed="High"):
         super().__init__()
         self.setWindowTitle("Live A429 Monitoring")
@@ -104,8 +104,15 @@ class ARINC429GUI(QMainWindow):
         main_widget = QWidget()
         main_layout = QVBoxLayout()
 
+        top_bar = QHBoxLayout()
+
         self.channel_label = QLabel(f"Channel: {self.channel} | Format: {self.format_type} | Speed: {self.speed}")
-        main_layout.addWidget(self.channel_label)
+        self.logo = QLabel()
+        self.logo.setPixmap(QPixmap("logo.png").scaled(50, 50, Qt.AspectRatioMode.KeepAspectRatio))
+        top_bar.addWidget(self.channel_label)
+        top_bar.addStretch()
+        top_bar.addWidget(self.logo)
+        main_layout.addLayout(top_bar)
 
         # ARINC 429 Table
         self.table = QTableWidget()

@@ -6,42 +6,106 @@ from PyQt6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QComboBox, QTextEdit
 )
 from PyQt6.QtCore import QTimer, Qt
+from PyQt6.QtGui import QColor, QPixmap
+
+#creates main window after starup
+class MainMenuWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Holt A429 Analyzer - Main Menu")
+        self.resize(400, 300)
+
+        
+        # Main horizontal layout
+        main_layout = QHBoxLayout()
+
+        # Left horizontal layout
+        left_layout = QVBoxLayout()
+        # left_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        left_layout.setAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignLeft)
+
+        #setup channel select
+        self.channel_combo = QComboBox()
+        self.channel_combo.addItems(["Channel 1", "Channel 2"])
+        channel_label = QLabel("Select Channel:")
+        left_layout.addWidget(channel_label)
+        channel_label.setStyleSheet("font-size: 16px;")
+        left_layout.addWidget(self.channel_combo)
+        left_layout.addSpacing(10)
+
+        #setup speed select - ***NEED TO INCORPORATE LOGIC***
+        self.speed_combo = QComboBox()
+        self.speed_combo.addItems(["Low", "High"])
+        speed_label = QLabel("Select A429 Speed:")
+        left_layout.addWidget(speed_label)
+        speed_label.setStyleSheet("font-size: 16px;")
+        left_layout.addWidget(self.speed_combo)
+        left_layout.addSpacing(10)
+
+        #setup data format (remove)
+        self.format_combo = QComboBox()
+        self.format_combo.addItems(["Hex", "Binary", "BCD", "BNR"])
+        format_label = QLabel("Select Data Format:")
+        left_layout.addWidget(format_label)
+        format_label.setStyleSheet("font-size: 16px;")
+        left_layout.addWidget(self.format_combo)
+        left_layout.addSpacing(20)
+
+        #setup start/stop button. 
+        self.start_stop_button = QPushButton("Start")
+        self.start_stop_button.clicked.connect(self.launch_data_window)
+        left_layout.addWidget(self.start_stop_button)
+        # layout.addStretch()
+
+        #right side layout for logo
+        self.logo = QLabel()
+        self.logo.setPixmap(QPixmap("logo.png").scaled(200, 200, Qt.AspectRatioMode.KeepAspectRatio))
+        self.logo.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+
+        #assemble main layout
+        main_layout.addLayout(left_layout)
+        main_layout.addWidget(self.logo)
+
+
+        #setup window in container
+        container = QWidget()                                   #creates the container 
+        container.setLayout(main_layout)                        #assigns layout to container
+        # container.setStyleSheet("background-color: #4B1E1E;")   #soft red
+        self.setCentralWidget(container)                        #sets container as main content
+
+    def launch_data_window(self):
+        channel = self.channel_combo.currentText()
+        format_type = self.format_combo.currentText()
+        speed = self.speed_combo.currentText()
+        self.data_window = ARINC429GUI(channel=channel,format_type=format_type, speed=speed)
+        self.data_window.show()
+        self.close()
+      
 
 
 class ARINC429GUI(QMainWindow):
-    def __init__(self):
+    def __init__(self, channel="Channel 1", format_type="Hex", speed="High"):
         super().__init__()
-        self.setWindowTitle("Holt ARINC 429 Analyzer")
+        self.setWindowTitle("Live A429 Monitoring")
         self.resize(800, 600)
+
+        self.channel = channel
+        self.format_type = format_type
+        self.speed = speed
+        self.labCount = 1
 
         self.init_ui()
         self.setup_mock_data_feed()
-        self.labCount = 1
+        
 
 
     def init_ui(self):
         main_widget = QWidget()
         main_layout = QVBoxLayout()
 
-        # Channel Selector and Data Format Selector
-        top_bar = QHBoxLayout()
-
-        self.channel_combo = QComboBox()
-        self.channel_combo.addItems(["Channel 1", "Channel 2"])
-
-        self.format_combo = QComboBox()
-        self.format_combo.addItems(["Hex", "Binary", "BCD", "BNR"])
-
-        self.start_stop_button = QPushButton("Stop")
-        self.start_stop_button.clicked.connect(self.start_stop_data)
-
-        top_bar.addWidget(QLabel("Select Channel:"))
-        top_bar.addWidget(self.channel_combo)
-        top_bar.addWidget(QLabel("Data Format:"))
-        top_bar.addWidget(self.format_combo)
-        top_bar.addStretch()
-        top_bar.addWidget(self.start_stop_button)
-        main_layout.addLayout(top_bar)
+        self.channel_label = QLabel(f"Channel: {self.channel} | Format: {self.format_type} | Speed: {self.speed}")
+        main_layout.addWidget(self.channel_label)
 
         # ARINC 429 Table
         self.table = QTableWidget()
@@ -58,6 +122,10 @@ class ARINC429GUI(QMainWindow):
 
         main_widget.setLayout(main_layout)
         self.setCentralWidget(main_widget)
+
+        self.back_button = QPushButton("Back to Main Menu")
+        self.back_button.clicked.connect(self.back_to_main)
+        main_layout.addWidget(self.back_button)
 
     def start_stop_data(self):
         if self.timer.isActive():
@@ -82,7 +150,7 @@ class ARINC429GUI(QMainWindow):
         time_str = "12:00:%02d" % random.randint(0, 59)
 
         # Format data based on selected format
-        format_type = self.format_combo.currentText()
+        format_type = self.format_type
         if format_type == "Hex":
             data_str = f"{data:05X}"
         elif format_type == "Binary":
@@ -124,9 +192,14 @@ class ARINC429GUI(QMainWindow):
             data = data - (1 << 21)
         return f"{data}"
 
+    def back_to_main(self):
+        self.timer.stop()
+        self.main_menu = MainMenuWindow()
+        self.main_menu.show()
+        self.close()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    window = ARINC429GUI()
-    window.show()
+    main_menu = MainMenuWindow()
+    main_menu.show()
     sys.exit(app.exec())

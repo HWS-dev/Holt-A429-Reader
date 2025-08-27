@@ -125,12 +125,12 @@ class LabelMenu(QMainWindow):
         main_layout.addWidget(self.liveTable)
 
         # Parsed Word Display
-        main_layout.addWidget(QLabel("Labels Detected"))
+        main_layout.addWidget(QLabel("Labels Decoded"))
         self.labelTable = QTableWidget()
         # self.labelTable.setColumnCount(7)
         # self.labelTable.setHorizontalHeaderLabels(["Label", "SDI", "Data", "SSM", "Parity", "Parameter", "Units"])
         self.labelTable.setColumnCount(4)
-        self.labelTable.setHorizontalHeaderLabels(["Label", "Data", "Parameter", "Units"])
+        self.labelTable.setHorizontalHeaderLabels(["Label (Octal)", "Data", "Parameter", "Units"])
         main_layout.addWidget(self.labelTable)
 
         main_widget.setLayout(main_layout)
@@ -164,24 +164,28 @@ class LabelMenu(QMainWindow):
         parity = random.randint(0, 1)
         time_str = "12:00:%02d" % random.randint(0, 59)
 
-        label = str(oct(label)[2:])
+        label_oct = str(oct(label)[2:])
 
         # Format data based on selected format
         format_type = self.format_type
         if format_type == "Hex":
             data_str = f"{data:05X}"
+            label_str = f"{label:05X}"
         elif format_type == "Binary":
-            data_str = f"{data:021b}"
+            data_str = f"{data:018b}"
+            label_str = f"{label:008b}"
         elif format_type == "BCD":
             data_str = self.to_bcd(data)
+            label_str = self.to_bcd(label)
         elif format_type == "BNR":
             data_str = self.to_bnr(data)
+            label_str = self.to_bnr(label)
         else:
             data_str = str(data)
 
         data_proc = int(self.to_bnr(data))
         
-        data_conv, units, param = self.data_decode(label, data_proc)
+        data_conv, units, param = self.data_decode(label_oct, data_proc)
         data_conv = str(data_conv)
         # row = self.table.rowCount()
         # self.table.insertRow(row)
@@ -193,7 +197,7 @@ class LabelMenu(QMainWindow):
         
         self.liveTable.insertRow(0)
         self.liveTable.setItem(0, 0, QTableWidgetItem(time_str))
-        self.liveTable.setItem(0, 1, QTableWidgetItem(label))
+        self.liveTable.setItem(0, 1, QTableWidgetItem(label_str))
         self.liveTable.setItem(0, 2, QTableWidgetItem(sdi))
         self.liveTable.setItem(0, 3, QTableWidgetItem(data_str))
         self.liveTable.setItem(0, 4, QTableWidgetItem(str(ssm)))
@@ -205,7 +209,7 @@ class LabelMenu(QMainWindow):
         existing_row = -1
         if self.labCount == 2:
             self.labelTable.insertRow(0)
-            self.labelTable.setItem(0, 0, QTableWidgetItem(label))
+            self.labelTable.setItem(0, 0, QTableWidgetItem(label_oct))
             # self.labelTable.setItem(0, 1, QTableWidgetItem(sdi))
             self.labelTable.setItem(0, 1, QTableWidgetItem(data_conv))
             # self.labelTable.setItem(0, 3, QTableWidgetItem(str(ssm)))
@@ -214,13 +218,13 @@ class LabelMenu(QMainWindow):
             self.labelTable.setItem(0, 3, QTableWidgetItem(str(units)))
         else:
             for row in range(self.labelTable.rowCount()):
-                if self.labelTable.item(row, 0).text().strip() == label.strip():
+                if self.labelTable.item(row, 0).text().strip() == label_oct.strip():
                     existing_row = row
                     break
 
             if existing_row == -1:
                 self.labelTable.insertRow(0)
-                self.labelTable.setItem(0, 0, QTableWidgetItem(label))
+                self.labelTable.setItem(0, 0, QTableWidgetItem(label_oct))
                 # self.labelTable.setItem(0, 1, QTableWidgetItem(sdi))
                 self.labelTable.setItem(0, 1, QTableWidgetItem(data_conv))
                 # self.labelTable.setItem(0, 3, QTableWidgetItem(str(ssm)))

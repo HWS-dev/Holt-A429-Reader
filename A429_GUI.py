@@ -44,7 +44,7 @@ class MainMenuWindow(QMainWindow):
 
         #setup data format (remove)
         self.format_combo = QComboBox()
-        self.format_combo.addItems(["Hex", "Binary", "BCD", "BNR"])
+        self.format_combo.addItems(["BNR", "Binary", "BCD", "Hex"])
         format_label = QLabel("Select Data Format:")
         left_layout.addWidget(format_label)
         format_label.setStyleSheet("font-size: 16px;")
@@ -110,22 +110,28 @@ class LabelMenu(QMainWindow):
         self.logo = QLabel()
         self.logo.setPixmap(QPixmap("logo.png").scaled(50, 50, Qt.AspectRatioMode.KeepAspectRatio))
         top_bar.addWidget(self.channel_label)
+        self.start_stop_button = QPushButton("Stop")
+        self.start_stop_button.clicked.connect(self.start_stop_data)
+        top_bar.addWidget(self.start_stop_button)
         top_bar.addStretch()
         top_bar.addWidget(self.logo)
         main_layout.addLayout(top_bar)
 
         # ARINC 429 Table
-        self.table = QTableWidget()
-        self.table.setColumnCount(4)
-        self.table.setHorizontalHeaderLabels(["Time", "Label", "Data", "SSM"])
+        self.liveTable = QTableWidget()
+        self.liveTable.setColumnCount(6)
+        self.liveTable.setHorizontalHeaderLabels(["Time", "Label", "SDI", "Data", "SSM", "Parity"])
         main_layout.addWidget(QLabel("Live ARINC Words"))
-        main_layout.addWidget(self.table)
+        main_layout.addWidget(self.liveTable)
 
         # Parsed Word Display
-        main_layout.addWidget(QLabel("Word Details / Parser"))
-        self.details_box = QTextEdit()
-        self.details_box.setReadOnly(True)
-        main_layout.addWidget(self.details_box)
+        main_layout.addWidget(QLabel("Labels Detected"))
+        self.labelTable = QTableWidget()
+        # self.labelTable.setColumnCount(7)
+        # self.labelTable.setHorizontalHeaderLabels(["Label", "SDI", "Data", "SSM", "Parity", "Parameter", "Units"])
+        self.labelTable.setColumnCount(4)
+        self.labelTable.setHorizontalHeaderLabels(["Label", "Data", "Parameter", "Units"])
+        main_layout.addWidget(self.labelTable)
 
         main_widget.setLayout(main_layout)
         self.setCentralWidget(main_widget)
@@ -151,10 +157,14 @@ class LabelMenu(QMainWindow):
     def add_mock_data(self):
 
         # Simulate an ARINC word
-        label = random.randint(0, 255)
-        data = random.randint(0, 0xFFFFF)
+        label = random.randint(202, 206)
+        sdi = format(random.randint(0,3),'02b')
+        data = random.randint(0, 0xFFFF)
         ssm = random.randint(0, 3)
+        parity = random.randint(0, 1)
         time_str = "12:00:%02d" % random.randint(0, 59)
+
+        label = str(oct(label)[2:])
 
         # Format data based on selected format
         format_type = self.format_type
@@ -169,6 +179,10 @@ class LabelMenu(QMainWindow):
         else:
             data_str = str(data)
 
+        data_proc = int(self.to_bnr(data))
+        
+        data_conv, units, param = self.data_decode(label, data_proc)
+        data_conv = str(data_conv)
         # row = self.table.rowCount()
         # self.table.insertRow(row)
         # self.table.setItem(row, 0, QTableWidgetItem(time_str))
@@ -177,17 +191,62 @@ class LabelMenu(QMainWindow):
         # self.table.setItem(row, 3, QTableWidgetItem(str(ssm)))
         
         
-        self.table.insertRow(0)
-        self.table.setItem(0, 0, QTableWidgetItem(time_str))
-        self.table.setItem(0, 1, QTableWidgetItem(f"{label:02X}"))
-        self.table.setItem(0, 2, QTableWidgetItem(data_str))
-        self.table.setItem(0, 3, QTableWidgetItem(str(ssm)))
-        self.table.setVerticalHeaderItem(0, QTableWidgetItem(str(self.labCount)))
+        self.liveTable.insertRow(0)
+        self.liveTable.setItem(0, 0, QTableWidgetItem(time_str))
+        self.liveTable.setItem(0, 1, QTableWidgetItem(label))
+        self.liveTable.setItem(0, 2, QTableWidgetItem(sdi))
+        self.liveTable.setItem(0, 3, QTableWidgetItem(data_str))
+        self.liveTable.setItem(0, 4, QTableWidgetItem(str(ssm)))
+        self.liveTable.setItem(0, 5, QTableWidgetItem(str(parity)))
+        self.liveTable.setVerticalHeaderItem(0, QTableWidgetItem(str(self.labCount)))
         self.labCount += 1
 
-        self.details_box.setPlainText(
-            f"Label: {label:02X}\nData: {data_str}\nSSM: {ssm}\nTimestamp: {time_str}"
-        )
+    # Check if label already exists in labelTable
+        existing_row = -1
+        if self.labCount == 2:
+            self.labelTable.insertRow(0)
+            self.labelTable.setItem(0, 0, QTableWidgetItem(label))
+            # self.labelTable.setItem(0, 1, QTableWidgetItem(sdi))
+            self.labelTable.setItem(0, 1, QTableWidgetItem(data_conv))
+            # self.labelTable.setItem(0, 3, QTableWidgetItem(str(ssm)))
+            # self.labelTable.setItem(0, 4, QTableWidgetItem(str(parity)))
+            self.labelTable.setItem(0, 2, QTableWidgetItem(str(param)))
+            self.labelTable.setItem(0, 3, QTableWidgetItem(str(units)))
+        else:
+            for row in range(self.labelTable.rowCount()):
+                if self.labelTable.item(row, 0).text().strip() == label.strip():
+                    existing_row = row
+                    break
+
+            if existing_row == -1:
+                self.labelTable.insertRow(0)
+                self.labelTable.setItem(0, 0, QTableWidgetItem(label))
+                # self.labelTable.setItem(0, 1, QTableWidgetItem(sdi))
+                self.labelTable.setItem(0, 1, QTableWidgetItem(data_conv))
+                # self.labelTable.setItem(0, 3, QTableWidgetItem(str(ssm)))
+                # self.labelTable.setItem(0, 4, QTableWidgetItem(str(parity)))
+                self.labelTable.setItem(0, 2, QTableWidgetItem(str(param)))
+                self.labelTable.setItem(0, 3, QTableWidgetItem(str(units)))
+            else:
+                # self.labelTable.setItem(existing_row, 1, QTableWidgetItem(sdi))
+                self.labelTable.setItem(existing_row, 1, QTableWidgetItem(data_conv))
+                # self.labelTable.setItem(existing_row, 3, QTableWidgetItem(str(ssm)))
+                # self.labelTable.setItem(existing_row, 4, QTableWidgetItem(str(parity)))
+                self.labelTable.setItem(existing_row, 2, QTableWidgetItem(str(param)))
+                self.labelTable.setItem(existing_row, 3, QTableWidgetItem(str(units)))
+
+        # self.labelTable.insertRow(0)
+        # self.labelTable.setItem(0, 0, QTableWidgetItem(label))
+        # self.labelTable.setItem(0, 1, QTableWidgetItem(sdi))
+        # self.labelTable.setItem(0, 2, QTableWidgetItem(data_str))
+        # self.labelTable.setItem(0, 3, QTableWidgetItem(str(ssm)))
+        # self.labelTable.setItem(0, 4, QTableWidgetItem(str(parity)))
+        # self.labelTable.setVerticalHeaderItem(0, QTableWidgetItem(str(self.labCount)))
+
+
+        # self.details_box.setPlainText(
+        #     f"Label: {label:02X}\nData: {data_str}\nSSM: {ssm}\nTimestamp: {time_str}"
+        # )
 
     def to_bcd(self, data):
         # Convert to BCD-like string for display (mock implementation)
@@ -204,6 +263,33 @@ class LabelMenu(QMainWindow):
         self.main_menu = MainMenuWindow()
         self.main_menu.show()
         self.close()
+
+    #decoding known lables. 
+    def data_decode(self, label, data):
+        if label == '312':
+            data = round(data*0.125,3)
+            param = "Ground Speed"
+            units = 'knots'
+        elif label == '313':
+            data = round(data*0.0055,3)
+            param = "Ground Track (True)"
+            units = 'degrees'
+        elif label == '314':
+            data = round(data*0.0055,3)
+            param = "Heading (True)"
+            units = 'degrees'
+        elif label == '315':
+            data = round(data*0.125,3)
+            param = "Wind Speed"
+            units = 'Knots'
+        elif label == '316':
+            data = round(data*0.0055,3)
+            param = "Wind Direction"
+            units = 'degrees'
+        else:
+            param = 'unk'
+            units = 'unk'
+        return data, units, param
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

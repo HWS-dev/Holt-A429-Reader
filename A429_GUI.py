@@ -1,5 +1,8 @@
 import sys
 import random
+from time import time
+import matplotlib.pyplot as plt
+from collections import deque
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget,
     QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -7,6 +10,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import QTimer, Qt
 from PyQt6.QtGui import QColor, QPixmap
+
 
 #creates main window after starup
 class MainMenuWindow(QMainWindow):
@@ -94,7 +98,7 @@ class LabelMenu(QMainWindow):
         self.format_type = format_type
         self.speed = speed
         self.labCount = 1
-
+        self.label_history = {}     # key: label (str), value: deque of (timestamp, value)
         self.init_ui()
         self.setup_mock_data_feed()
         
@@ -124,13 +128,13 @@ class LabelMenu(QMainWindow):
         main_layout.addWidget(QLabel("Live ARINC Words"))
         main_layout.addWidget(self.liveTable)
 
-        # Parsed Word Display
+        # Deocded Labels Table
         main_layout.addWidget(QLabel("Labels Decoded"))
         self.labelTable = QTableWidget()
         # self.labelTable.setColumnCount(7)
         # self.labelTable.setHorizontalHeaderLabels(["Label", "SDI", "Data", "SSM", "Parity", "Parameter", "Units"])
-        self.labelTable.setColumnCount(4)
-        self.labelTable.setHorizontalHeaderLabels(["Label (Octal)", "Data", "Parameter", "Units"])
+        self.labelTable.setColumnCount(5)
+        self.labelTable.setHorizontalHeaderLabels(["Label (Octal)", "Data", "Parameter", "Units", "Action"])
         main_layout.addWidget(self.labelTable)
 
         main_widget.setLayout(main_layout)
@@ -164,6 +168,7 @@ class LabelMenu(QMainWindow):
         parity = random.randint(0, 1)
         time_str = "12:00:%02d" % random.randint(0, 59)
 
+        #convert label to octal
         label_oct = str(oct(label)[2:])
 
         # Format data based on selected format
@@ -183,18 +188,24 @@ class LabelMenu(QMainWindow):
         else:
             data_str = str(data)
 
+        #convert data to BNR for mock decoding, deocde data, then convert to string. 
         data_proc = int(self.to_bnr(data))
-        
-        data_conv, units, param = self.data_decode(label_oct, data_proc)
-        data_conv = str(data_conv)
-        # row = self.table.rowCount()
-        # self.table.insertRow(row)
-        # self.table.setItem(row, 0, QTableWidgetItem(time_str))
-        # self.table.setItem(row, 1, QTableWidgetItem(f"{label:02X}"))
-        # self.table.setItem(row, 2, QTableWidgetItem(data_str))
-        # self.table.setItem(row, 3, QTableWidgetItem(str(ssm)))
-        
-        
+        data_dec, units, param = self.data_decode(label_oct, data_proc)
+        data_conv = str(data_dec)
+
+        now = time()
+        label_key = str(label_oct)
+        #if label is not in deque, add it. 
+        if label_key not in self.label_history:
+            self.label_history[label_key] = deque()
+
+        # Append new data point
+        self.label_history[label_key].append((now, data_dec))
+        # Remove old data points > 10 seconds ago
+        while self.label_history[label_key] and now - self.label_history[label_key][0][0] > 10:
+            self.label_history[label_key].popleft()
+
+        #setup live ARINC table with all data coming in. 
         self.liveTable.insertRow(0)
         self.liveTable.setItem(0, 0, QTableWidgetItem(time_str))
         self.liveTable.setItem(0, 1, QTableWidgetItem(label_str))
@@ -205,7 +216,7 @@ class LabelMenu(QMainWindow):
         self.liveTable.setVerticalHeaderItem(0, QTableWidgetItem(str(self.labCount)))
         self.labCount += 1
 
-    # Check if label already exists in labelTable
+    # Check if label already exists in labelTable, then update table with only new detected labels. 
         existing_row = -1
         if self.labCount == 2:
             self.labelTable.insertRow(0)
@@ -216,6 +227,9 @@ class LabelMenu(QMainWindow):
             # self.labelTable.setItem(0, 4, QTableWidgetItem(str(parity)))
             self.labelTable.setItem(0, 2, QTableWidgetItem(str(param)))
             self.labelTable.setItem(0, 3, QTableWidgetItem(str(units)))
+            btn = QPushButton("Plot")
+            btn.clicked.connect(lambda _, l=label_oct: self.plot_label_data(l))
+            self.labelTable.setCellWidget(0, 4, btn)
         else:
             for row in range(self.labelTable.rowCount()):
                 if self.labelTable.item(row, 0).text().strip() == label_oct.strip():
@@ -231,6 +245,9 @@ class LabelMenu(QMainWindow):
                 # self.labelTable.setItem(0, 4, QTableWidgetItem(str(parity)))
                 self.labelTable.setItem(0, 2, QTableWidgetItem(str(param)))
                 self.labelTable.setItem(0, 3, QTableWidgetItem(str(units)))
+                btn = QPushButton("Plot")
+                btn.clicked.connect(lambda _, l=label_oct: self.plot_label_data(l))
+                self.labelTable.setCellWidget(0, 4, btn)
             else:
                 # self.labelTable.setItem(existing_row, 1, QTableWidgetItem(sdi))
                 self.labelTable.setItem(existing_row, 1, QTableWidgetItem(data_conv))
@@ -238,6 +255,7 @@ class LabelMenu(QMainWindow):
                 # self.labelTable.setItem(existing_row, 4, QTableWidgetItem(str(parity)))
                 self.labelTable.setItem(existing_row, 2, QTableWidgetItem(str(param)))
                 self.labelTable.setItem(existing_row, 3, QTableWidgetItem(str(units)))
+
 
         # self.labelTable.insertRow(0)
         # self.labelTable.setItem(0, 0, QTableWidgetItem(label))
@@ -267,6 +285,22 @@ class LabelMenu(QMainWindow):
         self.main_menu = MainMenuWindow()
         self.main_menu.show()
         self.close()
+
+    def plot_label_data(self, label):
+        data_points = self.label_history.get(str(label), [])
+        if not data_points:
+            return
+
+        timestamps, values = zip(*data_points)
+        elapsed = [t - timestamps[0] for t in timestamps]
+
+        plt.figure()
+        plt.plot(elapsed, values, marker='o')
+        plt.title(f"Label {label} - Last 10 Seconds")
+        plt.xlabel("Time (s)")
+        plt.ylabel("Value")
+        plt.grid(True)
+        plt.show()
 
     #decoding known lables. 
     def data_decode(self, label, data):

@@ -197,7 +197,7 @@ class LEDMenu(QWidget):
 
         try:
             self.ser = serial.Serial(port=port, baudrate=self.baudrate, timeout=0.5)
-            QMessageBox.information(self, "Serial", f"Connected to {port}")
+            QMessageBox.information(self, "Serial", f"Connected to Holt Reader {port}")
         except serial.SerialException as e:
             self.ser = None
             QMessageBox.critical(self, "Serial Error", f"Could not open {port}:\n{e}")

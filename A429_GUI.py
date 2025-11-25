@@ -1,12 +1,14 @@
 import sys
 import random
+import serial
+import serial.tools.list_ports
 from time import time
 import matplotlib.pyplot as plt
 from collections import deque
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget,
     QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QTableWidget, QTableWidgetItem, QComboBox, QTextEdit
+    QTableWidget, QTableWidgetItem, QComboBox, QTextEdit, QMessageBox
 )
 from PyQt6.QtCore import QTimer, Qt
 from PyQt6.QtGui import QColor, QPixmap
@@ -22,11 +24,12 @@ class MainMenuWindow(QMainWindow):
         
         # Main horizontal layout
         main_layout = QHBoxLayout()
-
+        top_bar = QHBoxLayout()
         # Left horizontal layout
         left_layout = QVBoxLayout()
         # left_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
         left_layout.setAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignLeft)
+
 
         #setup channel select
         self.channel_combo = QComboBox()
@@ -61,6 +64,12 @@ class MainMenuWindow(QMainWindow):
         left_layout.addWidget(self.start_stop_button)
         # layout.addStretch()
 
+        #setup LED Test. 
+        self.ledBTN = QPushButton("LED Test")
+        self.ledBTN.clicked.connect(self.launch_LED_window)
+        left_layout.addWidget(self.ledBTN)
+        # layout.addStretch()
+
         #right side layout for logo
         self.logo = QLabel()
         self.logo.setPixmap(QPixmap("logo.png").scaled(200, 200, Qt.AspectRatioMode.KeepAspectRatio))
@@ -68,6 +77,7 @@ class MainMenuWindow(QMainWindow):
 
 
         #assemble main layout
+        main_layout.addLayout(top_bar)
         main_layout.addLayout(left_layout)
         main_layout.addWidget(self.logo)
 
@@ -85,7 +95,133 @@ class MainMenuWindow(QMainWindow):
         self.data_window = LabelMenu(channel=channel,format_type=format_type, speed=speed)
         self.data_window.show()
         self.close()
-      
+
+    def launch_LED_window(self):
+        self.data_window = LEDMenu()
+        self.data_window.show()
+        self.close()
+
+class LEDMenu(QWidget):
+    def __init__(self, baudrate=115200, parent=None):
+        super().__init__(parent)
+
+        self.setWindowTitle("STM32 LED Control")
+        self.baudrate = baudrate
+        self.ser = None
+
+        # --- UI elements ---
+        layout = QVBoxLayout(self)
+
+        # Row: COM port label + combo + refresh + connect
+        port_row = QHBoxLayout()
+
+        port_label = QLabel("Serial Port:")
+        self.port_combo = QComboBox()
+        self.refresh_btn = QPushButton("Refresh")
+        self.connect_btn = QPushButton("Connect")
+
+        port_row.addWidget(port_label)
+        port_row.addWidget(self.port_combo, 1)
+        port_row.addWidget(self.refresh_btn)
+        port_row.addWidget(self.connect_btn)
+
+        layout.addLayout(port_row)
+
+         #setup blink selections
+        self.blink_combo = QComboBox()
+        self.blink_combo.addItems(["1", "3", "5", "7", "9"])
+        blink_label = QLabel("Select # of blinks:")
+        layout.addWidget(blink_label)
+        blink_label.setStyleSheet("font-size: 16px;")
+        layout.addWidget(self.blink_combo)
+        layout.addSpacing(20)
+
+        # Button to blink LED
+        self.btnBlink = QPushButton("Blink LED")
+        layout.addWidget(self.btnBlink)
+
+        # --- Signals ---
+        self.refresh_btn.clicked.connect(self.refresh_ports)
+        self.connect_btn.clicked.connect(self.on_connect_clicked)
+        self.btnBlink.clicked.connect(self.on_blink_clicked)
+
+        # Populate COM ports at startup
+        self.refresh_ports()
+
+        
+        self.back_button = QPushButton("Back to Main Menu")
+        self.back_button.clicked.connect(self.back_to_main)
+        layout.addWidget(self.back_button)
+
+    # --------------------------------------------------------
+    # Serial-port handling
+    # --------------------------------------------------------
+
+    def refresh_ports(self):
+        """Scan and populate the COM port combo box."""
+        current = self.port_combo.currentText()
+        self.port_combo.clear()
+
+        ports = list(serial.tools.list_ports.comports())
+        for p in ports:
+            # p.device is like "COM3", p.description is like "USB-SERIAL CH340"
+            self.port_combo.addItem(f"{p.device} - {p.description}", userData=p.device)
+
+        # Try to keep previous selection if still present
+        if current:
+            idx = self.port_combo.findText(current)
+            if idx >= 0:
+                self.port_combo.setCurrentIndex(idx)
+
+        if self.port_combo.count() == 0:
+            self.port_combo.addItem("No ports found", userData=None)
+
+    def on_connect_clicked(self):
+        """Open the selected COM port."""
+        # Close previous port if open
+        if self.ser is not None and self.ser.is_open:
+            self.ser.close()
+            self.ser = None
+
+        idx = self.port_combo.currentIndex()
+        port = self.port_combo.itemData(idx)
+
+        if not port:
+            QMessageBox.warning(self, "Serial", "No valid COM port selected.")
+            return
+
+        try:
+            self.ser = serial.Serial(port=port, baudrate=self.baudrate, timeout=0.5)
+            QMessageBox.information(self, "Serial", f"Connected to {port}")
+        except serial.SerialException as e:
+            self.ser = None
+            QMessageBox.critical(self, "Serial Error", f"Could not open {port}:\n{e}")
+
+    def on_blink_clicked(self):
+        """Send 'B' to STM32 to trigger PC13 blink."""
+        if self.ser is None or not self.ser.is_open:
+            QMessageBox.warning(self, "Serial", "Serial port not open")
+            return
+        blinkCount = self.blink_combo.currentText()
+        try:
+            cmd = f"B{blinkCount}".encode("ascii")
+            self.ser.write(cmd)  # matches the STM32 code you loaded
+            # Optional: read response
+            # resp = self.ser.readline().decode(errors="ignore").strip()
+            # print("STM32:", resp)
+        except serial.SerialException as e:
+            QMessageBox.critical(self, "Serial Error", f"Write failed:\n{e}")
+
+    def closeEvent(self, event):
+        """Clean up serial port on exit."""
+        if self.ser is not None and self.ser.is_open:
+            self.ser.close()
+        super().closeEvent(event)
+
+    def back_to_main(self):
+        self.main_menu = MainMenuWindow()
+        self.main_menu.show()
+        self.close()
 
 
 class LabelMenu(QMainWindow):
@@ -117,9 +253,12 @@ class LabelMenu(QMainWindow):
         self.start_stop_button = QPushButton("Stop")
         self.start_stop_button.clicked.connect(self.start_stop_data)
         top_bar.addWidget(self.start_stop_button)
+
         top_bar.addStretch()
         top_bar.addWidget(self.logo)
         main_layout.addLayout(top_bar)
+
+
 
         # ARINC 429 Table
         self.liveTable = QTableWidget()
@@ -143,6 +282,8 @@ class LabelMenu(QMainWindow):
         self.back_button = QPushButton("Back to Main Menu")
         self.back_button.clicked.connect(self.back_to_main)
         main_layout.addWidget(self.back_button)
+
+
 
     def start_stop_data(self):
         if self.timer.isActive():
